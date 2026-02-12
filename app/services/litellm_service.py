@@ -23,7 +23,7 @@ class LiteLLMService:
         # 设置 API Key
         if settings.ZHIPU_API_KEY:
             import os
-            os.environ["ZHIPUAI_API_KEY"] = settings.ZHIPU_API_KEY
+            os.environ["ZAI_API_KEY"] = settings.ZHIPU_API_KEY
 
     async def chat_completion(
         self,
@@ -73,7 +73,7 @@ class LiteLLMService:
         }
 
         # 启用联网功能（智谱 AI 支持）
-        if self.model.startswith("zhipuai"):
+        if self.model.startswith("zai"):
             request_params["tools"] = [{"type": "web_search", "web_search": {"enable": True}}]
 
         try:
@@ -126,7 +126,7 @@ class LiteLLMService:
             **kwargs
         }
 
-        if self.model.startswith("zhipuai"):
+        if self.model.startswith("zai"):
             request_params["tools"] = [{"type": "web_search", "web_search": {"enable": True}}]
 
         try:
@@ -148,7 +148,13 @@ class LiteLLMService:
     def extract_usage(self, response: Dict[str, Any]) -> Dict[str, int]:
         """从响应中提取使用量信息"""
         try:
-            return response.get("usage", {})
+            usage = response.get("usage", {})
+            # 如果是 Pydantic 模型，转换为字典
+            if hasattr(usage, "model_dump"):
+                return usage.model_dump()
+            elif hasattr(usage, "dict"):
+                return usage.dict()
+            return usage
         except Exception as e:
             logger.error(f"Failed to extract usage: {e}")
             return {}

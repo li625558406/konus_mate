@@ -1,0 +1,119 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Global Styles */
+@layer base {
+  html {
+    font-size: 16px;
+  }
+
+  body {
+    @apply bg-neutral-50 text-neutral-800 antialiased;
+  }
+}
+
+@layer components {
+  /* Elegant Card */
+  .card {
+    @apply bg-white rounded-2xl shadow-soft-lg border border-neutral-200;
+  }
+
+  /* Primary Button */
+  .btn-primary {
+    @apply px-6 py-3 rounded-xl font-display font-semibold tracking-wide transition-all duration-300;
+    background: #c9a86c;
+    box-shadow: 0 4px 16px rgba(201, 168, 108, 0.2);
+  }
+
+  .btn-primary:hover {
+    background: #b8956f;
+    box-shadow: 0 6px 20px rgba(201, 168, 108, 0.3);
+    transform: translateY(-1px);
+  }
+
+  .btn-primary:active {
+    transform: translateY(0);
+  }
+
+  /* Secondary Button */
+  .btn-secondary {
+    @apply px-6 py-3 rounded-xl font-body font-medium transition-all duration-300;
+    @apply bg-neutral-100 text-neutral-700 hover:bg-neutral-200 border border-neutral-200;
+  }
+
+  /* Input Field */
+  .input-field {
+    @apply w-full px-4 py-3 bg-neutral-50 border border-neutral-200 rounded-xl text-neutral-800 font-body text-base;
+    @apply focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition-all duration-300;
+    @apply placeholder:text-neutral-400;
+  }
+
+  /* Gradient Text */
+  .text-gradient {
+    @apply bg-gradient-to-r from-primary-500 to-accent-500 bg-clip-text text-transparent;
+  }
+
+  /* Subtle Background Pattern */
+  .bg-pattern {
+    background-color: #fafafa;
+    background-image: radial-gradient(circle at 1px 1px, rgba(201, 168, 108, 0.05) 1px, transparent 0);
+    background-size: 40px 40px;
+  }
+
+  /* Sidebar */
+  .sidebar {
+    @apply bg-white border-r border-neutral-200;
+  }
+
+  /* Chat Bubbles */
+  .bubble-user {
+    @apply bg-primary-100 text-neutral-800 border border-primary-200;
+  }
+
+  .bubble-assistant {
+    @apply bg-white text-neutral-800 border border-neutral-200 shadow-soft;
+  }
+}
+
+/* Loading Spinner */
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid rgba(201, 168, 108, 0.15);
+  border-top-color: #c9a86c;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Typing Indicator */
+.typing-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #7a9658;
+  animation: typing 1.4s infinite ease-in-out;
+}
+
+.typing-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes typing {
+  0%, 60%, 100% {
+    transform: translateY(0);
+  }
+  30% {
+    transform: translateY(-8px);
+  }
+}
