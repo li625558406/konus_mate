@@ -36,7 +36,7 @@ class ChatMessage(Base):
     content = Column(Text, nullable=False, comment="消息内容")
 
     # 存储消息的元数据（如模型参数、token使用量等）
-    metadata = Column(JSON, nullable=True, comment="消息元数据")
+    message_metadata = Column(JSON, nullable=True, comment="消息元数据")
 
     # 记录使用的 system_instruction 和 prompt
     system_instruction_id = Column(Integer, ForeignKey("system_instructions.id"), nullable=True, comment="使用的系统提示词ID")

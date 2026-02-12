@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 # 添加项目根目录到 Python 路径
-project_root = Path(__file__).parent
+project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
@@ -25,7 +25,7 @@ sync_engine = create_engine(settings.sync_database_url)
 
 def init_database():
     """初始化数据库表结构"""
-    from app.models import Base
+    from app.db.session import Base
     Base.metadata.create_all(sync_engine)
     print("✓ Database tables created successfully")
 
