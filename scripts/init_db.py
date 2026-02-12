@@ -13,7 +13,7 @@ sys.path.insert(0, str(project_root))
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from app.core.config import settings
-from app.models import SystemInstruction, Prompt
+from app.models import SystemInstruction, Prompt, User
 
 
 # 创建同步引擎用于初始化脚本
@@ -36,10 +36,40 @@ def insert_test_data():
 
     try:
         # 检查是否已有数据
-        existing_instruction = session.query(SystemInstruction).first()
+        existing_instruction = session.query(User).first()
         if existing_instruction:
             print("⚠ Test data already exists, skipping insertion...")
             return
+
+        # ========== 插入测试用户 ==========
+        test_users = [
+            User(
+                username="admin",
+                email="admin@konus.com",
+                full_name="系统管理员",
+                is_active=True,
+                is_superuser=True,
+                is_verified=True,
+            ),
+            User(
+                username="testuser",
+                email="test@konus.com",
+                full_name="测试用户",
+                is_active=True,
+                is_superuser=False,
+                is_verified=True,
+            ),
+        ]
+
+        # 设置测试用户密码（统一为: Test123456）
+        for user in test_users:
+            user.set_password("Test123456")
+            session.add(user)
+
+        session.flush()
+        print(f"✓ Inserted {len(test_users)} test users")
+        print("  - admin / Test123456 (管理员)")
+        print("  - testuser / Test123456 (普通用户)")
 
         # ========== 插入 System Instructions ==========
         instructions = [
@@ -176,11 +206,15 @@ def insert_test_data():
         print("\n" + "="*50)
         print("初始化完成！测试数据已成功插入。")
         print("="*50)
+        print("\n测试账号:")
+        print("  1. admin / Test123456 (管理员账户)")
+        print("  2. testuser / Test123456 (普通用户)")
         print("\n默认配置:")
         print(f"  - 默认 System Instruction: 通用助手 (ID: 1)")
         print(f"  - 默认 Prompt: 默认对话 (ID: 1)")
         print("\n你可以通过以下 API 查看和管理:")
         print(f"  - API 文档: http://localhost:8000/docs")
+        print(f"  - 用户认证: /api/v1/auth/*")
         print(f"  - System Instructions: /api/v1/system-instructions")
         print(f"  - Prompts: /api/v1/prompts")
 

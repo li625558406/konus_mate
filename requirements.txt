@@ -22,5 +22,9 @@ httpx==0.28.1
 pydantic==2.12.5
 pydantic-settings==2.6.0
 
+# Security & Authentication
+passlib[bcrypt]==1.7.4
+python-jose[cryptography]==3.3.0
+
 # Utilities
 pytz==2024.2
