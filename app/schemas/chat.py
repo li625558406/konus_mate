@@ -28,13 +28,14 @@ class ChatMessageResponse(ChatMessageBase):
 
     id: int
     session_id: str
-    metadata: Optional[dict[str, Any]] = None
+    metadata: Optional[dict[str, Any]] = Field(None, alias="message_metadata", serialization_alias="message_metadata")
     system_instruction_id: Optional[int] = None
     prompt_id: Optional[int] = None
     created_at: datetime
 
     class Config:
         from_attributes = True
+        populate_by_name = True
 
 
 class ChatSessionBase(BaseModel):

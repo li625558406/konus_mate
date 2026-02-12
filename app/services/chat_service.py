@@ -44,7 +44,7 @@ class ChatService:
         prompt = result.scalar_one_or_none()
         return prompt.content if prompt else None
 
-    async def _get_session_messages(self, session_id: str, limit: int = 20) -> List[dict]:
+    async def _get_session_messages(self, session_id: str, limit: int = 20) -> List[ChatMessage]:
         """获取会话历史消息"""
         result = await self.db.execute(
             select(ChatMessage)
@@ -52,8 +52,7 @@ class ChatService:
             .order_by(ChatMessage.created_at)
             .limit(limit)
         )
-        messages = result.scalars().all()
-        return [{"role": m.role, "content": m.content} for m in messages]
+        return result.scalars().all()
 
     async def chat(self, request: ChatRequest, user_id: str = "default_user") -> ChatResponse:
         """
@@ -116,11 +115,29 @@ class ChatService:
         self.db.add(user_message)
         await self.db.flush()
 
-        # 构建消息历史
-        messages = [{"role": "user", "content": request.message}]
-        # 这里可以加载历史消息实现多轮对话
-        # history = await self._get_session_messages(session_id)
-        # messages.extend(history)
+        # 构建消息历史 - 加载会话的历史消息实现多轮对话
+        messages = []
+
+        # 加载历史消息（最近的 20 条）
+        history = await self._get_session_messages(session_id, limit=20)
+
+        # 将历史消息转换为 litellm 格式
+        for msg in history:
+            messages.append({
+                "role": msg.role,
+                "content": msg.content
+            })
+
+        # 添加当前用户消息
+        messages.append({
+            "role": "user",
+            "content": request.message
+        })
+
+        # 限制历史消息数量，避免 token 超限
+        # 只保留最近的 15 条消息（约 7-8 轮对话）
+        if len(messages) > 15:
+            messages = messages[-15:]
 
         # 调用 LLM
         response = await litellm_service.chat_completion(

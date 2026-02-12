@@ -1,7 +1,7 @@
 <template>
-  <div class="min-h-screen bg-neutral-50 flex">
+  <div class="h-screen bg-neutral-50 flex overflow-hidden">
     <!-- Sidebar -->
-    <aside class="sidebar w-80 flex flex-col">
+    <aside class="sidebar w-80 flex flex-col h-full">
       <!-- Logo Area -->
       <div class="p-6 border-b border-neutral-200">
         <h1 class="text-2xl font-display font-bold text-gradient">Konus Mate</h1>
@@ -70,9 +70,9 @@
     </aside>
 
     <!-- Main Chat Area -->
-    <main class="flex-1 flex flex-col bg-white">
+    <main class="flex-1 flex flex-col bg-white h-full overflow-hidden">
       <!-- Chat Header -->
-      <header class="p-6 border-b border-neutral-200">
+      <header class="flex-shrink-0 p-6 border-b border-neutral-200">
         <h2 class="text-xl font-display font-semibold text-neutral-800">
           {{ chatStore.currentSession?.title || '新对话' }}
         </h2>
@@ -82,7 +82,7 @@
       </header>
 
       <!-- Messages Area -->
-      <div ref="messagesContainer" class="flex-1 overflow-y-auto p-6 space-y-6 bg-neutral-50/50">
+      <div ref="messagesContainer" class="flex-1 overflow-y-auto p-6 space-y-6">
         <!-- Welcome Message -->
         <div v-if="chatStore.messages.length === 0" class="flex items-center justify-center h-full">
           <div class="text-center">
