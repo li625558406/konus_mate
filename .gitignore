@@ -25,7 +25,7 @@ venv/
 .venv/
 ENV/
 env/
-
+nextlevelbuilder-ui-ux-pro-max
 # Environment Variables
 .env
 .env.local
