@@ -10,6 +10,7 @@ from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.system_instruction import SystemInstruction
 from app.models.conversation_memory import ConversationMemory
+from app.models.user_custom_prompt import UserCustomPrompt
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.services.litellm_service import litellm_service
 from app.services.conversation_cleaner_service import (
@@ -49,6 +50,40 @@ class ChatService:
         )
         instruction = result.scalar_one_or_none()
         return instruction.content if instruction else None
+
+    async def _get_user_custom_prompt(
+        self,
+        user_id: int,
+        system_instruction_id: int
+    ) -> Optional[str]:
+        """
+        获取用户自定义 prompt（基于 user_id 和 system_instruction_id）
+
+        Args:
+            user_id: 用户ID
+            system_instruction_id: 系统提示词ID
+
+        Returns:
+            用户自定义 prompt 内容，如果不存在则返回 None
+        """
+        try:
+            result = await self.db.execute(
+                select(UserCustomPrompt)
+                .where(
+                    and_(
+                        UserCustomPrompt.user_id == user_id,
+                        UserCustomPrompt.system_instruction_id == system_instruction_id,
+                        UserCustomPrompt.is_active == True
+                    )
+                )
+                .order_by(UserCustomPrompt.sort_order)
+                .limit(1)
+            )
+            custom_prompt = result.scalar_one_or_none()
+            return custom_prompt.content if custom_prompt else None
+        except Exception as e:
+            logger.error(f"查询用户自定义 prompt 失败: {str(e)}", exc_info=True)
+            return None
 
     async def _retrieve_relevant_memories(
         self,
@@ -242,23 +277,41 @@ class ChatService:
             query=last_user_message
         )
 
-        # 7. 构建消息列表
+        # 7. 查询用户自定义 prompt（新增逻辑）
+        user_custom_prompt = await self._get_user_custom_prompt(
+            user_id=user_id,
+            system_instruction_id=system_instruction_id
+        )
+
+        # 8. 构建消息列表
         messages = [
             {"role": msg.role, "content": msg.content}
             for msg in messages_to_process
         ]
 
-        # 8. 组合最新的3条记忆到prompt中
+        # 9. 组合 prompt 内容（优先级：用户自定义 prompt > 记忆信息）
         prompt_content = None
+
+        # 9.1 优先添加用户自定义 prompt（新增）
+        if user_custom_prompt:
+            prompt_content = user_custom_prompt
+            logger.info(f"[USER_CUSTOM_PROMPT] Found custom prompt for user_id={user_id}, system_instruction_id={system_instruction_id}")
+
+        # 9.2 组合最新的3条记忆到prompt中
         if recent_memories:
             memory_text = self._format_memories_for_prompt(recent_memories)
-            prompt_content = f"""以下是用户最近的对话记忆，请在回复时参考这些信息：
+            memory_prompt = f"""以下是用户最近的对话记忆，请在回复时参考这些信息：
 
 {memory_text}
 
 请根据这些记忆信息，提供更个性化、更贴合用户需求的回复。"""
+            # 追加到现有 prompt 后面
+            if prompt_content:
+                prompt_content = prompt_content + "\n\n" + memory_prompt
+            else:
+                prompt_content = memory_prompt
 
-        # 9. 如果还有RAG检索的记忆，也追加
+        # 9.3 如果还有RAG检索的记忆，也追加
         if memory_context:
             rag_text = f"\n\n另外，以下是与当前问题相关的历史记忆：\n\n{memory_context}"
             prompt_content = prompt_content + rag_text if prompt_content else rag_text
@@ -266,7 +319,7 @@ class ChatService:
         # 打印最终使用的prompt（调试用）
         logger.info(f"[PROMPT] Final used prompt:\n{prompt_content}")
 
-        # 8. 启动后台任务
+        # 10. 启动后台任务
         # - 如果触发清洗，启动清洗任务
         # - 每次都启动软删除旧记忆任务
         async def background_tasks():
