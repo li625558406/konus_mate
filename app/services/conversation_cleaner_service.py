@@ -11,6 +11,7 @@ from datetime import datetime, timezone, timedelta
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.litellm_service import litellm_service
+from app.services.emotion_analysis_service import EmotionAnalysisService
 from app.models.conversation_memory import ConversationMemory
 
 logger = logging.getLogger(__name__)
@@ -174,7 +175,23 @@ class ConversationCleanerService:
                 logger.info(f"对话轮次 {conversation_round} 的内容不需要保存")
                 return []
 
+            # ========== 新增：2.5 情绪分析步骤 ==========
+            # 分析情绪强度（归一化为 0.1-1.0）
+            emotional_weight = await EmotionAnalysisService.analyze_emotion(cleaning_result["summary"])
+
+            # 分类记忆类型（fact/preference/event/desire）
+            entities = cleaning_result.get("entities", {})
+            memory_category = EmotionAnalysisService.classify_memory_type(
+                cleaning_result["summary"],
+                entities
+            )
+
+            logger.info(f"情绪分析: category={memory_category}, emotional_weight={emotional_weight}")
+
             # 3. 创建记忆记录（不保存原始对话内容，节省存储空间）
+            import time
+            current_timestamp = int(time.time())
+
             memory = ConversationMemory(
                 user_id=user_id,
                 system_instruction_id=system_instruction_id,
@@ -184,6 +201,14 @@ class ConversationCleanerService:
                 key_points=json.dumps(cleaning_result.get("key_points", []), ensure_ascii=False),
                 conversation_round=conversation_round,
                 importance_score=cleaning_result.get("importance_score", 5),
+
+                # ========== 新增：Metadata 字段 ==========
+                memory_category=memory_category,
+                created_at_timestamp=current_timestamp,
+                last_accessed=current_timestamp,  # 初始值等于创建时间
+                access_count=1,  # 初始访问次数为1
+                emotional_weight=emotional_weight,
+                semantic_importance=cleaning_result.get("importance_score", 5) / 10.0,  # 归一化为 0.1-1.0
             )
 
             # 如果有 entities 信息，保存为 JSON

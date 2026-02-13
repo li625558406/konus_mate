@@ -15,8 +15,7 @@ from app.schemas.chat import ChatRequest, ChatResponse
 from app.services.litellm_service import litellm_service
 from app.services.conversation_cleaner_service import (
     ConversationCleanerService,
-    clean_conversation_in_background,
-    soft_delete_old_memories_in_background
+    clean_conversation_in_background
 )
 
 logger = logging.getLogger(__name__)
@@ -319,14 +318,11 @@ class ChatService:
         # 打印最终使用的prompt（调试用）
         logger.info(f"[PROMPT] Final used prompt:\n{prompt_content}")
 
-        # 10. 启动后台任务
-        # - 如果触发清洗，启动清洗任务
-        # - 每次都启动软删除旧记忆任务
-        async def background_tasks():
+        # 9. 启动后台对话清洗任务
+        async def background_cleaning():
             try:
                 from app.db.session import AsyncSessionLocal
                 async with AsyncSessionLocal() as bg_db:
-                    logger.info(f"[BACKGROUND] Starting tasks: should_clean={should_clean}")
                     if should_clean:
                         logger.info(f"[BACKGROUND] Launching cleaning task...")
                         await clean_conversation_in_background(
@@ -338,20 +334,12 @@ class ChatService:
                         )
                     else:
                         logger.info(f"[BACKGROUND] Skipping cleaning (should_clean=False)")
-
-                    # 每次都触发软删除检查
-                    await soft_delete_old_memories_in_background(
-                        db=bg_db,
-                        user_id=user_id,
-                        system_instruction_id=system_instruction_id
-                    )
-                    logger.info(f"[BACKGROUND] All tasks completed")
             except Exception as e:
-                logger.error(f"后台任务执行失败: {str(e)}", exc_info=True)
+                logger.error(f"后台对话清洗任务失败: {str(e)}", exc_info=True)
 
-        asyncio.create_task(background_tasks())
+        asyncio.create_task(background_cleaning())
 
-        # 8. 调用 LLM（prompt参数包含RAG检索的记忆）
+        # 10. 调用 LLM（prompt参数包含RAG检索的记忆）
         response = await litellm_service.chat_completion(
             messages=messages,
             temperature=request.temperature,

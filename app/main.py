@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 from app.core.config import settings
 from app.api.routes import api_router
 from app.db import init_db
+from app.services.scheduler_service import scheduler_service
 
 # 配置日志
 logging.basicConfig(
@@ -33,10 +34,24 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Failed to initialize database: {e}", exc_info=True)
 
+    # 启动定时任务
+    try:
+        await scheduler_service.start()
+        logger.info("Scheduler service started successfully")
+    except Exception as e:
+        logger.error(f"Failed to start scheduler service: {e}", exc_info=True)
+
     yield
 
     # 关闭时执行
     logger.info("Shutting down Konus Mate API...")
+
+    # 停止定时任务
+    try:
+        await scheduler_service.stop()
+        logger.info("Scheduler service stopped successfully")
+    except Exception as e:
+        logger.error(f"Failed to stop scheduler service: {e}", exc_info=True)
 
 
 # 创建 FastAPI 应用

@@ -3,7 +3,7 @@
 用于RAG向量存储的对话清洗数据
 """
 from datetime import datetime
-from sqlalchemy import Column, String, DateTime, Text, Integer, Boolean, ForeignKey, Index
+from sqlalchemy import Column, String, DateTime, Text, Integer, Boolean, ForeignKey, Index, Float
 from sqlalchemy.orm import relationship
 from app.db.session import Base
 
@@ -35,6 +35,23 @@ class ConversationMemory(Base):
     # 实体信息（JSON格式）
     entities = Column(Text, nullable=True, comment="实体信息（JSON格式）：{dates: [], locations: [], people: [], events: []}")
 
+    # ========== 新增：智能记忆管理 Metadata 字段 ==========
+    # 记忆分类：fact(永久事实), preference(永久喜好), event(衰减事件), desire(衰减愿望)
+    memory_category = Column(String(20), nullable=True, comment="记忆分类: fact/preference/event/desire")
+
+    # 时间戳（Unix timestamp，用于计算时间衰减）
+    created_at_timestamp = Column(Integer, nullable=True, comment="创建时间戳（Unix timestamp）")
+
+    # 访问追踪
+    last_accessed = Column(Integer, nullable=True, comment="最后访问时间戳（Unix timestamp，初始值=created_at_timestamp）")
+    access_count = Column(Integer, default=1, comment="访问次数（初始值=1）")
+
+    # 情绪权重（0.1-1.0，由情绪分析Agent注入）
+    emotional_weight = Column(Float, nullable=True, comment="情绪权重（0.1-1.0，越高影响越大）")
+
+    # 语义重要性（0.1-1.0，归一化后的importance_score）
+    semantic_importance = Column(Float, nullable=True, comment="语义重要性（0.1-1.0，归一化后的importance_score/10）")
+
     # 软删除
     is_deleted = Column(Boolean, default=False, comment="是否软删除")
     deleted_at = Column(DateTime, nullable=True, comment="删除时间")
@@ -47,4 +64,6 @@ class ConversationMemory(Base):
     __table_args__ = (
         Index('ix_user_system_created', 'user_id', 'system_instruction_id', 'created_at'),
         Index('ix_user_system_deleted', 'user_id', 'system_instruction_id', 'is_deleted'),
+        Index('ix_memory_category', 'memory_category'),  # 新增：按分类查询
+        Index('ix_last_accessed', 'last_accessed'),  # 新增：按访问时间排序
     )
