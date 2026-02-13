@@ -38,13 +38,13 @@ class ConversationCleanerService:
   "should_remember": true,
   "memory_type": "active",
   "reason": "为什么这段对话值得记住的原因",
-  "entities": {
+  "entities": {{
     "dates": ["2026-02-13"],
     "locations": ["人民广场"],
     "people": ["小王"],
     "events": ["下午茶"]
-  }
-}
+  }}
+}}
 
 判断标准：
 1. **主动记忆（active）**：用户主动提到的个人信息、喜好、重要事件、情感状态等
@@ -278,6 +278,134 @@ class ConversationCleanerService:
             await self.db.rollback()
             return 0
 
+    def _extract_keywords_from_query(self, query: str) -> dict:
+        """
+        从用户查询中提取关键词和时间范围
+
+        Args:
+            query: 用户查询文本
+
+        Returns:
+            包含关键词和时间范围的字典
+        """
+        import re
+        query_lower = query.lower()
+
+        # 提取时间范围
+        time_ranges = {
+            "今天": 0,
+            "昨天": 1,
+            "前天": 2,
+            "本周": 7,
+            "上周": 14,
+            "本月": 30,
+            "上月": 60,
+            "今年": 365,
+            "去年": 730,
+            "前年": 1095,
+        }
+
+        detected_time_range = None
+        for keyword, days in time_ranges.items():
+            if keyword in query:
+                detected_time_range = days
+                break
+
+        # 提取关键词（去除常见停用词）
+        stopwords = {"的", "了", "是", "我", "你", "他", "她", "它", "什么", "哪", "怎样", "如何", "吗", "呢", "啊"}
+        words = re.findall(r'[\w]+', query_lower)
+        keywords = [w for w in words if w not in stopwords and len(w) > 1]
+
+        return {
+            "keywords": keywords,
+            "time_range_days": detected_time_range,
+            "raw_query": query_lower
+        }
+
+    async def _calculate_entity_match_score(
+        self,
+        memory: ConversationMemory,
+        query_info: dict
+    ) -> float:
+        """
+        计算记忆的entities与查询的匹配分数
+
+        Args:
+            memory: 记忆对象
+            query_info: 查询信息（包含keywords和time_range_days）
+
+        Returns:
+            entities匹配分数 (0.0 - 1.0+)
+        """
+        if not memory.entities:
+            return 0.0
+
+        try:
+            import json
+            from datetime import timedelta
+
+            entities = json.loads(memory.entities)
+            score = 0.0
+            query_lower = query_info["raw_query"]
+            keywords = query_info["keywords"]
+
+            # 1. 地点匹配 (权重最高: 0.4)
+            if "locations" in entities and entities["locations"]:
+                for loc in entities["locations"]:
+                    loc_lower = loc.lower()
+                    # 完全匹配
+                    if loc_lower in query_lower or query_lower in loc_lower:
+                        score += 0.4
+                        logger.debug(f"地点匹配: {loc} -> +0.4")
+                    # 关键词匹配
+                    elif any(kw in loc_lower or loc_lower in kw for kw in keywords):
+                        score += 0.2
+                        logger.debug(f"地点部分匹配: {loc} -> +0.2")
+
+            # 2. 时间范围匹配 (权重: 0.3)
+            if "dates" in entities and entities["dates"] and query_info["time_range_days"]:
+                try:
+                    from datetime import datetime
+                    cutoff_date = datetime.utcnow() - timedelta(days=query_info["time_range_days"] + 30)  # +30天容差
+
+                    for date_str in entities["dates"]:
+                        try:
+                            memory_date = datetime.fromisoformat(date_str)
+                            if memory_date >= cutoff_date:
+                                score += 0.3
+                                logger.debug(f"时间范围匹配: {date_str} -> +0.3")
+                                break
+                        except:
+                            pass
+                except Exception as e:
+                    logger.debug(f"时间解析失败: {e}")
+
+            # 3. 人物匹配 (权重: 0.2)
+            if "people" in entities and entities["people"]:
+                for person in entities["people"]:
+                    person_lower = person.lower()
+                    if person_lower in query_lower or query_lower in person_lower:
+                        score += 0.2
+                        logger.debug(f"人物匹配: {person} -> +0.2")
+                    elif any(kw in person_lower or person_lower in kw for kw in keywords):
+                        score += 0.1
+
+            # 4. 事件匹配 (权重: 0.1)
+            if "events" in entities and entities["events"]:
+                for event in entities["events"]:
+                    event_lower = event.lower()
+                    if event_lower in query_lower or query_lower in event_lower:
+                        score += 0.1
+                        logger.debug(f"事件匹配: {event} -> +0.1")
+                    elif any(kw in event_lower or event_lower in kw for kw in keywords):
+                        score += 0.05
+
+            return min(score, 1.0)  # 最高1.0分
+
+        except Exception as e:
+            logger.debug(f"计算entities匹配分数失败: {e}")
+            return 0.0
+
     async def get_relevant_memories(
         self,
         user_id: int,
@@ -286,7 +414,7 @@ class ConversationCleanerService:
         limit: int = 5
     ) -> List[ConversationMemory]:
         """
-        检索相关记忆（使用向量相似度搜索）
+        检索相关记忆（混合检索：向量相似度 + entities匹配）
 
         Args:
             user_id: 用户ID
@@ -316,22 +444,46 @@ class ConversationCleanerService:
             if not memories:
                 return []
 
-            # 2. 计算相似度
+            # 2. 提取查询信息
+            query_info = self._extract_keywords_from_query(query)
+            logger.info(f"查询分析: keywords={query_info['keywords']}, time_range={query_info['time_range_days']}")
+
+            # 3. 计算混合相似度
             memories_with_scores = []
             for memory in memories:
-                # 使用摘要计算相似度
-                similarity = await self._calculate_similarity(query, memory.summary)
+                # 向量相似度 (50%权重)
+                vector_score = await self._calculate_similarity(query, memory.summary)
 
-                # 综合考虑相似度和重要性评分
-                combined_score = similarity * 0.7 + (memory.importance_score / 10) * 0.3
+                # entities匹配分数 (30%权重)
+                entity_score = await self._calculate_entity_match_score(memory, query_info)
 
-                memories_with_scores.append((memory, combined_score))
+                # 重要性评分 (20%权重)
+                importance_score = memory.importance_score / 10
 
-            # 3. 按综合评分排序并返回top N
+                # 综合评分
+                combined_score = (
+                    vector_score * 0.5 +
+                    entity_score * 0.3 +
+                    importance_score * 0.2
+                )
+
+                memories_with_scores.append((memory, combined_score, {
+                    "vector": vector_score,
+                    "entity": entity_score,
+                    "importance": importance_score
+                }))
+
+            # 4. 按综合评分排序并返回top N
             memories_with_scores.sort(key=lambda x: x[1], reverse=True)
             top_memories = [m[0] for m in memories_with_scores[:limit]]
 
-            logger.info(f"向量相似度搜索: query='{query[:50]}...', 找到{len(top_memories)}条相关记忆")
+            # 记录评分详情（调试用）
+            if memories_with_scores:
+                top_scores = memories_with_scores[:limit]
+                logger.info(f"混合检索: query='{query[:50]}...', 找到{len(top_memories)}条相关记忆")
+                for i, (mem, score, details) in enumerate(top_scores, 1):
+                    logger.debug(f"  TOP{i}: score={score:.3f} (v={details['vector']:.3f}, e={details['entity']:.3f}, i={details['importance']:.3f}) - {mem.summary[:30]}")
+
             return top_memories
 
         except Exception as e:
