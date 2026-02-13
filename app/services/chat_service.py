@@ -91,6 +91,64 @@ class ChatService:
             logger.error(f"检索相关记忆失败: {str(e)}", exc_info=True)
             return ""
 
+    async def _get_recent_memories(
+        self,
+        user_id: int,
+        system_instruction_id: int,
+        limit: int = 3
+    ) -> List[ConversationMemory]:
+        """
+        查询最新的N条记忆
+
+        Args:
+            user_id: 用户ID
+            system_instruction_id: 系统提示词ID
+            limit: 返回数量限制
+
+        Returns:
+            最新的N条记忆列表
+        """
+        try:
+            result = await self.db.execute(
+                select(ConversationMemory)
+                .where(
+                    and_(
+                        ConversationMemory.user_id == user_id,
+                        ConversationMemory.system_instruction_id == system_instruction_id,
+                        ConversationMemory.is_deleted == False
+                    )
+                )
+                .order_by(ConversationMemory.created_at.desc())
+                .limit(limit)
+            )
+            memories = result.scalars().all()
+            logger.info(f"查询到 {len(memories)} 条最新记忆: user_id={user_id}")
+            return memories
+        except Exception as e:
+            logger.error(f"查询最新记忆失败: {str(e)}", exc_info=True)
+            return []
+
+    def _format_memories_for_prompt(self, memories: List[ConversationMemory]) -> str:
+        """
+        格式化记忆列表为prompt文本（只使用summary字段）
+
+        Args:
+            memories: 记忆列表
+
+        Returns:
+            格式化后的文本
+        """
+        if not memories:
+            return ""
+
+        formatted = []
+        for memory in memories:
+            formatted.append(
+                f"{memory.summary}"
+            )
+
+        return "\n\n".join(formatted)
+
     async def chat(self, request: ChatRequest, user_id: int) -> ChatResponse:
         """
         处理聊天请求（支持记忆管理和对话轮转）
@@ -141,7 +199,14 @@ class ChatService:
         else:
             system_instruction_content = await self._get_default_system_instruction()
 
-        # 5. 检索相关记忆（RAG向量相似度搜索）
+        # 5. 查询最新的3条记忆
+        recent_memories = await self._get_recent_memories(
+            user_id=user_id,
+            system_instruction_id=system_instruction_id,
+            limit=3
+        )
+
+        # 6. 检索相关记忆（RAG向量相似度搜索）
         last_user_message = request.messages[-1].content if request.messages else ""
         memory_context = await self._retrieve_relevant_memories(
             user_id=user_id,
@@ -149,20 +214,26 @@ class ChatService:
             query=last_user_message
         )
 
-        # 6. 构建消息列表
+        # 7. 构建消息列表
         messages = [
             {"role": msg.role, "content": msg.content}
             for msg in messages_to_process
         ]
 
-        # 7. 如果有记忆，追加到prompt中（不是system_instruction）
+        # 8. 组合最新的3条记忆到prompt中
         prompt_content = None
-        if memory_context:
-            prompt_content = f"""以下是用户的重要历史记忆，请在回复时参考这些信息：
+        if recent_memories:
+            memory_text = self._format_memories_for_prompt(recent_memories)
+            prompt_content = f"""以下是用户最近的对话记忆，请在回复时参考这些信息：
 
-{memory_context}
+{memory_text}
 
 请根据这些记忆信息，提供更个性化、更贴合用户需求的回复。"""
+
+        # 9. 如果还有RAG检索的记忆，也追加
+        if memory_context:
+            rag_text = f"\n\n另外，以下是与当前问题相关的历史记忆：\n\n{memory_context}"
+            prompt_content = prompt_content + rag_text if prompt_content else rag_text
 
         # 8. 启动后台任务
         # - 如果触发清洗，启动清洗任务
