@@ -35,6 +35,38 @@
             </svg>
           </button>
         </div>
+
+        <!-- System Instruction Selector -->
+        <div class="mb-4">
+          <label class="block text-neutral-600 font-body font-semibold text-sm mb-2">
+            AI 助手类型
+          </label>
+          <select
+            v-model="systemInstructionStore.selectedInstructionId"
+            class="w-full px-3 py-2 rounded-lg border border-neutral-300 bg-white text-neutral-800 font-body text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all"
+            :disabled="systemInstructionStore.loading"
+          >
+            <option v-if="systemInstructionStore.loading" value="" disabled>
+              加载中...
+            </option>
+            <option v-else-if="!systemInstructionStore.hasInstructions" value="" disabled>
+              暂无可用的助手类型
+            </option>
+            <option
+              v-for="instruction in systemInstructionStore.instructions"
+              :key="instruction.id"
+              :value="instruction.id"
+            >
+              {{ instruction.name }}
+            </option>
+          </select>
+          <p
+            v-if="systemInstructionStore.selectedInstruction"
+            class="mt-2 text-neutral-500 text-xs"
+          >
+            {{ systemInstructionStore.selectedInstruction.description }}
+          </p>
+        </div>
       </div>
 
       <!-- Logout Button -->
@@ -156,10 +188,12 @@ import { ref, onMounted, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useChatStore } from '@/stores/chat'
+import { useSystemInstructionStore } from '@/stores/system_instruction'
 
 const router = useRouter()
 const authStore = useAuthStore()
 const chatStore = useChatStore()
+const systemInstructionStore = useSystemInstructionStore()
 
 const messageInput = ref('')
 const messagesContainer = ref(null)
@@ -180,7 +214,9 @@ const handleSend = async () => {
   messageInput.value = ''
 
   try {
-    await chatStore.send(content)
+    await chatStore.send(content, {
+      systemInstructionId: systemInstructionStore.selectedInstructionId
+    })
     await scrollToBottom()
   } catch (error) {
     console.error('Send message failed:', error)
@@ -200,7 +236,16 @@ const handleLogout = () => {
   }
 }
 
-// 盚听消息变化，自动滚动到底部
+// 初始化加载系统提示词
+onMounted(async () => {
+  try {
+    await systemInstructionStore.loadInstructions()
+  } catch (error) {
+    console.error('Load system instructions failed:', error)
+  }
+})
+
+// 监听消息变化，自动滚动到底部
 watch(() => chatStore.messages.length, () => {
   scrollToBottom()
 })
