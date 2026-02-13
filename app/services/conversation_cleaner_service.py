@@ -88,29 +88,43 @@ class ConversationCleanerService:
     def __init__(self, db: AsyncSession):
         self.db = db
         self._embedding_model = None
+        self._fallback_warning_shown = False  # 标记是否已显示降级警告
 
     async def _get_embedding_model(self):
-        """延迟加载向量嵌入模型"""
+        """延迟加载向量嵌入模型（支持降级和告警）"""
         if self._embedding_model is None:
             try:
                 from sentence_transformers import SentenceTransformer
-                # 使用轻量级中文模型
+                # 使用轻量级多语言模型（支持中文）
                 model_name = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
                 self._embedding_model = SentenceTransformer(model_name)
-                logger.info(f"成功加载向量嵌入模型: {model_name}")
-            except ImportError:
-                logger.warning("sentence-transformers未安装，将使用简化的相似度计算")
+                logger.info(f"✅ 成功加载向量嵌入模型: {model_name}")
+                logger.info(f"   - 检索模式: 语义向量相似度（高精度）")
+            except ImportError as e:
                 self._embedding_model = "fallback"
+                logger.error("❌ sentence-transformers 未安装")
+                logger.error("   - 请运行: pip install sentence-transformers")
+                logger.error("   - 检索模式: 关键词匹配（低精度）")
+                logger.error("   - 影响: RAG 检索准确性将大幅下降")
             except Exception as e:
-                logger.error(f"加载向量嵌入模型失败: {str(e)}")
                 self._embedding_model = "fallback"
+                logger.error(f"❌ 加载向量嵌入模型失败: {str(e)}")
+                logger.error(f"   - 检索模式: 关键词匹配（低精度）")
+                logger.error(f"   - 建议: 检查模型下载网络或使用其他镜像源")
+
         return self._embedding_model
 
     async def _encode_text(self, text: str) -> Optional[np.ndarray]:
-        """将文本编码为向量"""
+        """将文本编码为向量（支持降级警告）"""
         try:
             model = await self._get_embedding_model()
             if model == "fallback":
+                # 首次降级时显示告警
+                if not self._fallback_warning_shown:
+                    logger.warning("⚠️  向量嵌入模型不可用，使用降级模式")
+                    logger.warning("   - 当前相似度计算精度: 低（仅关键词匹配）")
+                    logger.warning("   - 建议: 尽快安装 sentence-transformers")
+                    self._fallback_warning_shown = True
                 return None
 
             # sentence-transformers 是同步的，需要在事件循环中运行
@@ -124,22 +138,27 @@ class ConversationCleanerService:
             return None
 
     async def _calculate_similarity(self, text1: str, text2: str) -> float:
-        """计算两段文本的相似度"""
+        """计算两段文本的相似度（支持向量相似度和关键词匹配降级）"""
         try:
             emb1 = await self._encode_text(text1)
             emb2 = await self._encode_text(text2)
 
             if emb1 is None or emb2 is None:
-                # 回退到简单的关键词匹配
+                # 降级：使用简单的关键词匹配
                 words1 = set(text1.lower().split())
                 words2 = set(text2.lower().split())
                 if not words1 or not words2:
                     return 0.0
                 intersection = words1.intersection(words2)
-                return len(intersection) / min(len(words1), len(words2))
+                similarity = len(intersection) / min(len(words1), len(words2))
 
-            # 余弦相似度
+                # 仅在调试模式下记录
+                logger.debug(f"使用关键词匹配: similarity={similarity:.3f}")
+                return similarity
+
+            # 使用余弦相似度计算（高精度）
             similarity = np.dot(emb1, emb2) / (np.linalg.norm(emb1) * np.linalg.norm(emb2))
+            logger.debug(f"使用向量相似度: similarity={float(similarity):.3f}")
             return float(similarity)
         except Exception as e:
             logger.error(f"计算相似度失败: {str(e)}")
@@ -165,19 +184,30 @@ class ConversationCleanerService:
             保存的记忆列表
         """
         try:
+            logger.info(f"[CLEANING] 开始清洗对话: user_id={user_id}, round={conversation_round}, messages_count={len(messages)}")
+
             # 1. 将对话转换为文本
             conversation_text = self._format_conversation(messages)
+            logger.info(f"[CLEANING] 对话文本长度: {len(conversation_text)} 字符")
 
             # 2. 使用AI清洗对话
             cleaning_result = await self._ai_clean_conversation(conversation_text)
 
-            if not cleaning_result or not cleaning_result.get("should_remember"):
-                logger.info(f"对话轮次 {conversation_round} 的内容不需要保存")
+            if not cleaning_result:
+                logger.warning(f"[CLEANING] AI清洗返回None，跳过保存")
                 return []
+
+            if not cleaning_result.get("should_remember"):
+                logger.info(f"[CLEANING] 对话轮次 {conversation_round} 的内容不需要保存 (should_remember=false)")
+                return []
+
+            logger.info(f"[CLEANING] AI清洗完成，开始情绪分析: summary={cleaning_result.get('summary', '')[:50]}")
 
             # ========== 新增：2.5 情绪分析步骤 ==========
             # 分析情绪强度（归一化为 0.1-1.0）
+            logger.info(f"[CLEANING] 调用情绪分析服务...")
             emotional_weight = await EmotionAnalysisService.analyze_emotion(cleaning_result["summary"])
+            logger.info(f"[CLEANING] 情绪分析完成: emotional_weight={emotional_weight}")
 
             # 分类记忆类型（fact/preference/event/desire）
             entities = cleaning_result.get("entities", {})
@@ -185,8 +215,7 @@ class ConversationCleanerService:
                 cleaning_result["summary"],
                 entities
             )
-
-            logger.info(f"情绪分析: category={memory_category}, emotional_weight={emotional_weight}")
+            logger.info(f"[CLEANING] 记忆分类完成: category={memory_category}")
 
             # 3. 创建记忆记录（不保存原始对话内容，节省存储空间）
             import time
@@ -246,38 +275,79 @@ class ConversationCleanerService:
         return "\n\n".join(formatted)
 
     async def _ai_clean_conversation(self, conversation_text: str) -> Optional[Dict[str, Any]]:
-        """使用AI清洗对话内容"""
-        try:
-            prompt = self.CLEANING_PROMPT.format(conversation_text=conversation_text[:8000])
+        """使用AI清洗对话内容（支持重试和正则提取）"""
+        import re
 
-            response = await litellm_service.chat_completion(
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.3,  # 使用较低的温度以获得更一致的结果
-                max_tokens=1000,
-            )
+        max_retries = 3
+        last_error = None
 
-            content = litellm_service.extract_message_content(response)
+        for attempt in range(1, max_retries + 1):
+            try:
+                prompt = self.CLEANING_PROMPT.format(conversation_text=conversation_text[:8000])
 
-            # 解析JSON响应
-            # 尝试提取JSON（可能被包裹在markdown代码块中）
-            content = content.strip()
-            if content.startswith("```json"):
-                content = content[7:]
-            if content.startswith("```"):
-                content = content[3:]
-            if content.endswith("```"):
-                content = content[:-3]
-            content = content.strip()
+                response = await litellm_service.chat_completion(
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.3,
+                    max_tokens=1000,
+                )
 
-            result = json.loads(content)
-            return result
+                content = litellm_service.extract_message_content(response)
 
-        except json.JSONDecodeError as e:
-            logger.error(f"解析AI清洗结果失败: {str(e)}, content={content[:200]}")
-            return None
-        except Exception as e:
-            logger.error(f"AI清洗失败: {str(e)}", exc_info=True)
-            return None
+                # 方法1: 标准化处理（移除markdown代码块）
+                cleaned_content = content.strip()
+                if cleaned_content.startswith("```json"):
+                    cleaned_content = cleaned_content[7:]
+                if cleaned_content.startswith("```"):
+                    cleaned_content = cleaned_content[3:]
+                if cleaned_content.endswith("```"):
+                    cleaned_content = cleaned_content[:-3]
+                cleaned_content = cleaned_content.strip()
+
+                # 尝试解析
+                result = json.loads(cleaned_content)
+                logger.info(f"[CLEANING] AI清洗成功（第{attempt}次尝试）")
+                return result
+
+            except json.JSONDecodeError as e:
+                last_error = e
+                logger.warning(f"JSON解析失败（第{attempt}/{max_retries}次尝试）: {str(e)}")
+
+                # 方法2: 使用正则表达式提取JSON对象
+                try:
+                    # 匹配最外层的 { ... }
+                    json_pattern = r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}'
+                    matches = re.findall(json_pattern, content, re.DOTALL)
+
+                    if matches:
+                        # 尝试每个匹配项（从大到小）
+                        for match in reversed(matches):
+                            try:
+                                result = json.loads(match)
+                                logger.info(f"正则提取JSON成功（第{attempt}次尝试）")
+                                return result
+                            except:
+                                continue
+                except Exception as regex_error:
+                    logger.debug(f"正则提取失败: {regex_error}")
+
+                # 如果还有重试机会，继续
+                if attempt < max_retries:
+                    logger.info(f"准备第{attempt + 1}次重试...")
+                    continue
+                else:
+                    # 最后一次尝试失败，记录完整内容用于调试
+                    logger.error(
+                        f"JSON解析彻底失败，已重试{max_retries}次\n"
+                        f"原始内容前500字符: {content[:500]}\n"
+                        f"错误信息: {str(e)}"
+                    )
+                    return None
+
+            except Exception as e:
+                logger.error(f"AI清洗失败（第{attempt}次尝试）: {str(e)}", exc_info=True)
+                return None
+
+        return None
 
     async def soft_delete_old_memories(
         self,

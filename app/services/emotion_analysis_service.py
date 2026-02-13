@@ -54,7 +54,7 @@ class EmotionAnalysisService:
     @staticmethod
     async def analyze_emotion(text: str) -> Optional[float]:
         """
-        分析文本的情绪强度并归一化为 0.1-1.0
+        分析文本的情绪强度并归一化为 0.1-1.0（支持重试和正则提取）
 
         Args:
             text: 待分析文本
@@ -62,46 +62,97 @@ class EmotionAnalysisService:
         Returns:
             归一化后的情绪权重（0.1-1.0），失败返回 None
         """
-        try:
-            # 限制文本长度，避免浪费 token
-            truncated_text = text[:1000]
+        import re
 
-            # 调用 LLM 分析
-            response = await litellm_service.chat_completion(
-                messages=[{"role": "user", "content": EmotionAnalysisService.EMOTION_PROMPT.format(text=truncated_text)}],
-                temperature=0.3,  # 使用较低的温度以获得更一致的结果
-                max_tokens=500,
-            )
+        max_retries = 3
+        last_error = None
 
-            # 提取响应内容
-            content = litellm_service.extract_message_content(response)
+        for attempt in range(1, max_retries + 1):
+            try:
+                # 限制文本长度，避免浪费 token
+                truncated_text = text[:1000]
 
-            # 解析 JSON
-            # 尝试提取 JSON（可能被包裹在 markdown 代码块中）
-            content = content.strip()
-            if content.startswith("```json"):
-                content = content[7:]
-            if content.startswith("```"):
-                content = content[3:]
-            if content.endswith("```"):
-                content = content[:-3]
-            content = content.strip()
+                # 调用 LLM 分析
+                logger.info(f"[EMOTION] 调用情绪分析LLM: text={truncated_text[:50]}")
+                response = await litellm_service.chat_completion(
+                    messages=[{"role": "user", "content": EmotionAnalysisService.EMOTION_PROMPT.format(text=truncated_text)}],
+                    temperature=0.3,
+                    max_tokens=500,
+                )
 
-            result = json.loads(content)
-            score = result.get("score", 5)
+                # 提取响应内容
+                content = litellm_service.extract_message_content(response)
+                logger.info(f"[EMOTION] LLM原始响应（前200字符）: {repr(content[:200])}")
 
-            # 归一化：1-10 分 -> 0.1-1.0
-            normalized_weight = score / 10.0
+                # 方法1: 标准化处理（移除markdown代码块）
+                cleaned_content = content.strip()
+                if cleaned_content.startswith("```json"):
+                    cleaned_content = cleaned_content[7:]
+                if cleaned_content.startswith("```"):
+                    cleaned_content = cleaned_content[3:]
+                if cleaned_content.endswith("```"):
+                    cleaned_content = cleaned_content[:-3]
+                cleaned_content = cleaned_content.strip()
 
-            logger.info(f"情绪分析成功: score={score}, normalized={normalized_weight:.2f}, reason={result.get('reason', 'N/A')}")
-            return normalized_weight
+                logger.info(f"[EMOTION] 清洗后内容（前200字符）: {repr(cleaned_content[:200])}")
+                logger.info(f"[EMOTION] 内容长度: {len(cleaned_content)}, 非空: {bool(cleaned_content)}")
 
-        except json.JSONDecodeError as e:
-            logger.error(f"解析情绪分析结果失败: {str(e)}, content={content[:200]}")
-            return None
-        except Exception as e:
-            logger.error(f"情绪分析失败: {str(e)}", exc_info=True)
-            return None
+                # 尝试解析
+                result = json.loads(cleaned_content)
+                score = result.get("score", 5)
+
+                # 归一化：1-10 分 -> 0.1-1.0
+                normalized_weight = score / 10.0
+
+                logger.info(f"[EMOTION] 情绪分析成功（第{attempt}次尝试）: score={score}, normalized={normalized_weight:.2f}")
+                return normalized_weight
+
+            except json.JSONDecodeError as e:
+                last_error = e
+                logger.warning(f"情绪分析JSON解析失败（第{attempt}/{max_retries}次）: {str(e)}")
+
+                # 方法2: 使用正则表达式提取JSON
+                try:
+                    # 匹配最外层的 { ... }
+                    json_pattern = r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}'
+                    matches = re.findall(json_pattern, content, re.DOTALL)
+
+                    if matches:
+                        # 尝试每个匹配项（从大到小）
+                        for match in reversed(matches):
+                            try:
+                                result = json.loads(match)
+                                score = result.get("score", 5)
+                                normalized_weight = score / 10.0
+                                logger.info(f"情绪分析正则提取成功（第{attempt}次尝试）: score={score}, normalized={normalized_weight:.2f}")
+                                return normalized_weight
+                            except:
+                                continue
+                except Exception as regex_error:
+                    logger.debug(f"情绪分析正则提取失败: {regex_error}")
+
+                # 如果还有重试机会，继续
+                if attempt < max_retries:
+                    logger.info(f"准备第{attempt + 1}次重试...")
+                    continue
+                else:
+                    # 最后一次尝试失败，记录完整内容用于调试
+                    logger.error(
+                        f"情绪分析JSON解析彻底失败，已重试{max_retries}次\n"
+                        f"原始内容前500字符: {content[:500]}"
+                    )
+                    # 返回默认值而不是None
+                    logger.warning("使用默认情绪权重: 0.5")
+                    return 0.5
+
+            except Exception as e:
+                logger.error(f"情绪分析失败（第{attempt}次尝试）: {str(e)}", exc_info=True)
+                # 返回默认值而不是None
+                logger.warning("使用默认情绪权重: 0.5")
+                return 0.5
+
+        # 最终返回默认值
+        return 0.5
 
     @staticmethod
     def classify_memory_type(summary: str, entities: Dict[str, Any]) -> str:

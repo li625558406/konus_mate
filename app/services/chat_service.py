@@ -321,10 +321,11 @@ class ChatService:
         # 9. 启动后台对话清洗任务
         async def background_cleaning():
             try:
+                logger.info(f"[BACKGROUND] 后台任务开始执行: should_clean={should_clean}")
                 from app.db.session import AsyncSessionLocal
                 async with AsyncSessionLocal() as bg_db:
                     if should_clean:
-                        logger.info(f"[BACKGROUND] Launching cleaning task...")
+                        logger.info(f"[BACKGROUND] 启动清洗任务: user_id={user_id}, round={conversation_round}")
                         await clean_conversation_in_background(
                             db=bg_db,
                             user_id=user_id,
@@ -332,12 +333,14 @@ class ChatService:
                             messages=[{"role": m.role, "content": m.content} for m in request.messages],
                             conversation_round=conversation_round
                         )
+                        logger.info(f"[BACKGROUND] 清洗任务完成: user_id={user_id}, round={conversation_round}")
                     else:
                         logger.info(f"[BACKGROUND] Skipping cleaning (should_clean=False)")
             except Exception as e:
-                logger.error(f"后台对话清洗任务失败: {str(e)}", exc_info=True)
+                logger.error(f"[BACKGROUND] 后台任务异常: {str(e)}", exc_info=True)
 
-        asyncio.create_task(background_cleaning())
+        task = asyncio.create_task(background_cleaning())
+        logger.info(f"[BACKGROUND] 后台任务已创建: task_id={id(task)}")
 
         # 10. 调用 LLM（prompt参数包含RAG检索的记忆）
         response = await litellm_service.chat_completion(
