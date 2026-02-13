@@ -106,7 +106,8 @@ class ChatService:
         """
         # 1. 从 messages 数组长度判断对话次数
         total_messages = len(request.messages)
-        should_clean = total_messages >= CONVERSATION_BATCH_SIZE
+        # 只有对话条数等于CONVERSATION_BATCH_SIZE时才触发清洗
+        should_clean = total_messages == CONVERSATION_BATCH_SIZE
 
         # 2. 获取系统提示词ID
         system_instruction_id = request.system_instruction_id
@@ -120,15 +121,9 @@ class ChatService:
             instruction = result.scalar_one_or_none()
             system_instruction_id = instruction.id if instruction else 1
 
-        # 3. 判断是否需要裁剪消息（超过50条，保留后10条）
+        # 3. 不再裁剪消息，由前端控制发送的消息数量
         messages_to_process = request.messages.copy()
         conversation_round = 0
-
-        if total_messages > CONVERSATION_BATCH_SIZE:
-            # 保留后CONVERSATION_KEEP_SIZE条消息
-            if len(messages_to_process) > CONVERSATION_KEEP_SIZE:
-                messages_to_process = messages_to_process[-CONVERSATION_KEEP_SIZE:]
-                logger.info(f"裁剪消息为后{CONVERSATION_KEEP_SIZE}条: user_id={user_id}, original_count={total_messages}")
 
         # 计算清洗轮次
         if should_clean:

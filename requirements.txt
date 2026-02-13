@@ -24,8 +24,12 @@ pydantic-settings==2.6.0
 
 # Security & Authentication
 passlib[bcrypt]==1.7.4
-bcrypt<4.0.0
+bcrypt==4.0.0
 python-jose[cryptography]==3.3.0
+
+# Vector Embeddings for RAG similarity search
+sentence-transformers==2.2.0
+numpy>=1.21.0
 
 # Utilities
 pytz==2024.2

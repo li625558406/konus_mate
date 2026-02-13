@@ -136,12 +136,12 @@ class ConversationCleanerService:
                 logger.info(f"对话轮次 {conversation_round} 的内容不需要保存")
                 return []
 
-            # 3. 创建记忆记录（包含向量嵌入）
+            # 3. 创建记忆记录（不保存原始对话内容，节省存储）
             memory = ConversationMemory(
                 user_id=user_id,
                 system_instruction_id=system_instruction_id,
                 memory_type=cleaning_result.get("memory_type", "active"),
-                original_content=conversation_text[:5000],  # 限制原始内容长度
+                original_content=None,  # 不保存原始对话内容，节省存储空间
                 summary=cleaning_result["summary"],
                 key_points=json.dumps(cleaning_result.get("key_points", []), ensure_ascii=False),
                 conversation_round=conversation_round,
