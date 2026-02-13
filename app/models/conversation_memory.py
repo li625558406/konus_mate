@@ -26,7 +26,7 @@ class ConversationMemory(Base):
     key_points = Column(Text, nullable=True, comment="关键点列表（JSON格式）")
 
     # 向量嵌入（用于RAG检索）
-    embedding = Column(String(2000), nullable=True, comment="向量嵌入（base64编码或JSON数组字符串）")
+    embedding = Column(Text, nullable=True, comment="向量嵌入（JSON数组字符串）")
 
     # 元数据
     conversation_round = Column(Integer, nullable=False, comment="对话轮次（第50次、第100次等）")

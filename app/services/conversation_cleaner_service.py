@@ -335,13 +335,15 @@ async def clean_conversation_in_background(
     异步后台任务：清洗对话并存储
     """
     try:
+        logger.info(f"[CLEANING] Starting background task: user_id={user_id}, round={conversation_round}, messages={len(messages)}")
         service = ConversationCleanerService(db)
-        await service.clean_and_store_conversation(
+        memories = await service.clean_and_store_conversation(
             user_id=user_id,
             system_instruction_id=system_instruction_id,
             messages=messages,
             conversation_round=conversation_round
         )
+        logger.info(f"[CLEANING] Completed: saved {len(memories)} memories")
     except Exception as e:
         logger.error(f"后台对话清洗任务失败: {str(e)}", exc_info=True)
 

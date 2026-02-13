@@ -23,9 +23,7 @@ logger = logging.getLogger(__name__)
 
 # 常量配置
 # CONVERSATION_BATCH_SIZE = 50  # 每50次对话触发清洗
-# CONVERSATION_KEEP_SIZE = 10    # 超过50次后保留后10条
-CONVERSATION_BATCH_SIZE = 5  # 每50次对话触发清洗
-CONVERSATION_KEEP_SIZE = 2
+CONVERSATION_BATCH_SIZE = 6  # 每50次对话触发清洗
 
 class ChatService:
     """聊天服务类 - 处理聊天业务逻辑（支持记忆管理）"""
@@ -106,8 +104,12 @@ class ChatService:
         """
         # 1. 从 messages 数组长度判断对话次数
         total_messages = len(request.messages)
+        logger.info(f"total_messages: total_messages==================={total_messages}")
         # 只有对话条数等于CONVERSATION_BATCH_SIZE时才触发清洗
-        should_clean = total_messages == CONVERSATION_BATCH_SIZE
+        should_clean = total_messages >= CONVERSATION_BATCH_SIZE
+
+        # 添加详细日志
+        logger.info(f"[CHAT] user_id={user_id}, total_messages={total_messages}, CONVERSATION_BATCH_SIZE={CONVERSATION_BATCH_SIZE}, should_clean={should_clean}")
 
         # 2. 获取系统提示词ID
         system_instruction_id = request.system_instruction_id
@@ -169,7 +171,9 @@ class ChatService:
             try:
                 from app.db.session import AsyncSessionLocal
                 async with AsyncSessionLocal() as bg_db:
+                    logger.info(f"[BACKGROUND] Starting tasks: should_clean={should_clean}")
                     if should_clean:
+                        logger.info(f"[BACKGROUND] Launching cleaning task...")
                         await clean_conversation_in_background(
                             db=bg_db,
                             user_id=user_id,
@@ -177,6 +181,8 @@ class ChatService:
                             messages=[{"role": m.role, "content": m.content} for m in request.messages],
                             conversation_round=conversation_round
                         )
+                    else:
+                        logger.info(f"[BACKGROUND] Skipping cleaning (should_clean=False)")
 
                     # 每次都触发软删除检查
                     await soft_delete_old_memories_in_background(
@@ -184,6 +190,7 @@ class ChatService:
                         user_id=user_id,
                         system_instruction_id=system_instruction_id
                     )
+                    logger.info(f"[BACKGROUND] All tasks completed")
             except Exception as e:
                 logger.error(f"后台任务执行失败: {str(e)}", exc_info=True)
 

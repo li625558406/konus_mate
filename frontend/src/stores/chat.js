@@ -5,12 +5,8 @@ import { sendMessage } from '@/api/chat'
 const MESSAGES_STORAGE_KEY = 'chat_messages'
 
 // 前端消息截取配置
-//const TRIGGER_MESSAGE_COUNT = 60    // 触发截取的消息总数
-//const KEEP_MESSAGE_COUNT = 10        // 截取后保留的最新消息数
-
-const TRIGGER_MESSAGE_COUNT = 10    // 触发截取的消息总数
-const KEEP_MESSAGE_COUNT = 5        // 截取后保留的最新消息数
-
+const TRIGGER_MESSAGE_COUNT = 8     // 触发截取的消息总数
+const TRIGGER_MESSAGE = 6     // 触发截取的消息总数
 export const useChatStore = defineStore('chat', () => {
   // State
   const messages = ref([])
@@ -65,10 +61,11 @@ export const useChatStore = defineStore('chat', () => {
         content: messageContent,
       })
 
+      console.log(`[CHAT] Before trim: messages.length = ${messages.value.length}`)
+debugger
       // 当消息长度达到阈值时，删除旧消息，保留最新的N条
-      if (messages.value.length === TRIGGER_MESSAGE_COUNT) {
-        messages.value = messages.value.slice(-KEEP_MESSAGE_COUNT)
-        console.log(`消息数量达到${TRIGGER_MESSAGE_COUNT}，已删除前${TRIGGER_MESSAGE_COUNT - KEEP_MESSAGE_COUNT}条，保留最新${KEEP_MESSAGE_COUNT}条`)
+      if (messages.value.length >= TRIGGER_MESSAGE_COUNT) {
+        messages.value = messages.value.slice(TRIGGER_MESSAGE)
       }
 
       // 构建完整的对话上下文列表（发送完整的消息历史给后端）
@@ -76,6 +73,8 @@ export const useChatStore = defineStore('chat', () => {
         role: msg.role,
         content: msg.content,
       }))
+
+      console.log(`[CHAT] Sending to backend: ${messagesContext.length} messages`)
 
       // 发送请求（后端会从messages数组长度判断对话次数）
       const response = await sendMessage({
