@@ -4,6 +4,13 @@ import { sendMessage } from '@/api/chat'
 
 const MESSAGES_STORAGE_KEY = 'chat_messages'
 
+// 前端消息截取配置
+//const TRIGGER_MESSAGE_COUNT = 60    // 触发截取的消息总数
+//const KEEP_MESSAGE_COUNT = 10        // 截取后保留的最新消息数
+
+const TRIGGER_MESSAGE_COUNT = 10    // 触发截取的消息总数
+const KEEP_MESSAGE_COUNT = 5        // 截取后保留的最新消息数
+
 export const useChatStore = defineStore('chat', () => {
   // State
   const messages = ref([])
@@ -43,9 +50,9 @@ export const useChatStore = defineStore('chat', () => {
 
   /**
    * 发送消息（支持上下文）
-   * 后端会自动判断对话次数并处理：
-   * - 第50次触发AI清洗并保存记忆
-   * - 超过50次只保留后10条消息
+   * 前端消息管理：
+   * - 当消息长度等于 60 时，删除前 50 条，保留最新 10 条
+   * - 后端会在第 50 次对话时触发 AI 清洗并保存记忆
    */
   const send = async (messageContent, options = {}) => {
     sending.value = true
@@ -57,6 +64,12 @@ export const useChatStore = defineStore('chat', () => {
         role: 'user',
         content: messageContent,
       })
+
+      // 当消息长度达到阈值时，删除旧消息，保留最新的N条
+      if (messages.value.length === TRIGGER_MESSAGE_COUNT) {
+        messages.value = messages.value.slice(-KEEP_MESSAGE_COUNT)
+        console.log(`消息数量达到${TRIGGER_MESSAGE_COUNT}，已删除前${TRIGGER_MESSAGE_COUNT - KEEP_MESSAGE_COUNT}条，保留最新${KEEP_MESSAGE_COUNT}条`)
+      }
 
       // 构建完整的对话上下文列表（发送完整的消息历史给后端）
       const messagesContext = messages.value.map(msg => ({
