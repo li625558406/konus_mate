@@ -13,7 +13,7 @@ sys.path.insert(0, str(project_root))
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from app.core.config import settings
-from app.models import SystemInstruction, User
+from app.models import SystemInstruction, User, ConversationMemory
 
 
 # 创建同步引擎用于初始化脚本

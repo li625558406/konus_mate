@@ -4,8 +4,10 @@
 """
 from app.models.system_instruction import SystemInstruction
 from app.models.user import User
+from app.models.conversation_memory import ConversationMemory
 
 __all__ = [
     "SystemInstruction",
     "User",
+    "ConversationMemory",
 ]

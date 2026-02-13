@@ -23,6 +23,23 @@
 
       <!-- Actions -->
       <div class="flex-1 overflow-y-auto p-4">
+        <!-- Conversation Stats -->
+        <div class="mb-4 p-3 bg-neutral-100 rounded-lg">
+          <h3 class="text-neutral-600 font-body font-semibold text-sm mb-2">对话统计</h3>
+          <div class="space-y-1 text-sm">
+            <div class="flex justify-between">
+              <span class="text-neutral-500">消息总数：</span>
+              <span class="font-semibold text-neutral-800">{{ chatStore.messageCount }}</span>
+            </div>
+            <div v-if="chatStore.shouldWarnAboutCount" class="mt-2 p-2 bg-yellow-100 border border-yellow-300 rounded text-yellow-800 text-xs">
+              ⚠️ 接近50条消息，系统将自动保存关键记忆
+            </div>
+            <div v-if="chatStore.conversationRound > 0" class="mt-2 p-2 bg-green-100 border border-green-300 rounded text-green-800 text-xs">
+              ✅ 已完成 {{ chatStore.conversationRound }} 次对话清洗
+            </div>
+          </div>
+        </div>
+
         <div class="flex items-center justify-between mb-4">
           <h2 class="text-neutral-600 font-body font-semibold text-base">对话</h2>
           <button
@@ -66,6 +83,56 @@
           >
             {{ systemInstructionStore.selectedInstruction.description }}
           </p>
+        </div>
+
+        <!-- Memory Management -->
+        <div class="mb-4">
+          <div class="flex items-center justify-between mb-2">
+            <h2 class="text-neutral-600 font-body font-semibold text-base">记忆管理</h2>
+            <button
+              @click="handleLoadMemories"
+              class="text-primary-600 hover:text-primary-700 text-sm font-medium"
+            >
+              刷新
+            </button>
+          </div>
+
+          <!-- Memory List -->
+          <div v-if="memoryStore.loading" class="text-center py-4 text-neutral-500 text-sm">
+            加载中...
+          </div>
+          <div v-else-if="memoryStore.memories.length === 0" class="text-center py-4 text-neutral-500 text-sm">
+            暂无保存的记忆
+          </div>
+          <div v-else class="space-y-2 max-h-60 overflow-y-auto">
+            <div
+              v-for="memory in memoryStore.memories.slice(0, 5)"
+              :key="memory.id"
+              class="p-3 bg-neutral-100 rounded-lg text-sm"
+            >
+              <div class="flex justify-between items-start mb-1">
+                <span class="font-semibold text-neutral-800 flex-1">{{ memory.summary }}</span>
+                <button
+                  @click="handleDeleteMemory(memory.id)"
+                  class="text-red-600 hover:text-red-700 ml-2"
+                  title="删除"
+                >
+                  ×
+                </button>
+              </div>
+              <div class="text-neutral-500 text-xs">
+                {{ memoryStore.formatDate(memory.created_at) }}
+              </div>
+            </div>
+          </div>
+
+          <!-- Clear Old Memories Button -->
+          <button
+            @click="handleClearOldMemories"
+            class="w-full mt-2 py-2 rounded-lg border border-neutral-300 text-neutral-600 hover:bg-neutral-50 hover:border-neutral-400 transition-all font-body font-medium text-sm"
+          >
+            清理3个月前的记忆
+          </button>
         </div>
       </div>
 
@@ -174,7 +241,7 @@
             <span v-if="!chatStore.sending">发送</span>
             <div v-else class="spinner" style="width: 20px; height: 20px;"></div>
             <svg v-if="!chatStore.sending" class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-9-2 9-2 9 2z" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-9-9 2 2z" />
             </svg>
           </button>
         </form>
@@ -189,11 +256,13 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useChatStore } from '@/stores/chat'
 import { useSystemInstructionStore } from '@/stores/system_instruction'
+import { useMemoryStore } from '@/stores/memory'
 
 const router = useRouter()
 const authStore = useAuthStore()
 const chatStore = useChatStore()
 const systemInstructionStore = useSystemInstructionStore()
+const memoryStore = useMemoryStore()
 
 const messageInput = ref('')
 const messagesContainer = ref(null)
@@ -236,10 +305,43 @@ const handleLogout = () => {
   }
 }
 
+// 加载记忆列表
+const handleLoadMemories = async () => {
+  try {
+    await memoryStore.loadMemories(systemInstructionStore.selectedInstructionId)
+  } catch (error) {
+    console.error('Load memories failed:', error)
+  }
+}
+
+// 删除记忆
+const handleDeleteMemory = async (memoryId) => {
+  if (!confirm('确定要删除这条记忆吗？')) return
+
+  try {
+    await memoryStore.removeMemory(memoryId)
+  } catch (error) {
+    console.error('Delete memory failed:', error)
+  }
+}
+
+// 清理旧记忆
+const handleClearOldMemories = async () => {
+  if (!confirm('确定要清理3个月前的记忆吗？')) return
+
+  try {
+    const result = await memoryStore.clearOld(systemInstructionStore.selectedInstructionId)
+    alert(result.message || `已清理 ${result.count || 0} 条旧记忆`)
+  } catch (error) {
+    console.error('Clear old memories failed:', error)
+  }
+}
+
 // 初始化加载系统提示词
 onMounted(async () => {
   try {
     await systemInstructionStore.loadInstructions()
+    await handleLoadMemories()
   } catch (error) {
     console.error('Load system instructions failed:', error)
   }

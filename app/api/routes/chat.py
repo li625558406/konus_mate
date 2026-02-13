@@ -5,7 +5,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.services.chat_service import ChatService
-from app.api.dependencies import get_chat_service
+from app.api.dependencies import get_chat_service, get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +16,7 @@ router = APIRouter(prefix="/chat", tags=["聊天"])
 async def chat(
     request: ChatRequest,
     chat_service: ChatService = Depends(get_chat_service),
+    user_id: int = Depends(get_current_user),
 ):
     """
     发送聊天消息并获取 AI 响应（支持多轮对话上下文）
@@ -32,7 +33,7 @@ async def chat(
     - system_instruction > system_instruction_id > 默认值
     """
     try:
-        response = await chat_service.chat(request)
+        response = await chat_service.chat(request, user_id)
         return response
     except Exception as e:
         logger.error(f"Chat request failed: {str(e)}", exc_info=True)
