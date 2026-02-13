@@ -130,7 +130,7 @@ class ChatService:
 
     def _format_memories_for_prompt(self, memories: List[ConversationMemory]) -> str:
         """
-        格式化记忆列表为prompt文本（只使用summary字段）
+        格式化记忆列表为prompt文本（包含时间实体信息）
 
         Args:
             memories: 记忆列表
@@ -143,11 +143,39 @@ class ChatService:
 
         formatted = []
         for memory in memories:
+            # 解析 entities（如果存在）
+            entities_info = ""
+            try:
+                import json
+                if memory.entities:
+                    entities = json.loads(memory.entities)
+
+                    # 按类型优先级显示实体信息
+                    if "dates" in entities and entities["dates"]:
+                        entities_info += "\n时间："
+                        for date in entities["dates"]:
+                            entities_info += f"\n  - {date}"
+                    if "locations" in entities and entities["locations"]:
+                        entities_info += "\n地点："
+                        for loc in entities["locations"]:
+                            entities_info += f"\n  - {loc}"
+                    if "people" in entities and entities["people"]:
+                        entities_info += "\n人物："
+                        for person in entities["people"]:
+                            entities_info += f"\n  - {person}"
+                    if "events" in entities and entities["events"]:
+                        entities_info += "\n事件："
+                        for event in entities["events"]:
+                            entities_info += f"\n  - {event}"
+            except:
+                pass
+
             formatted.append(
-                f"{memory.summary}"
+                f"记忆时间：{memory.created_at.strftime('%Y-%m-%d %H:%M')}\n"
+                f"摘要：{memory.summary}{entities_info}"
             )
 
-        return "\n\n".join(formatted)
+        return "\n\n---\n\n".join(formatted)
 
     async def chat(self, request: ChatRequest, user_id: int) -> ChatResponse:
         """
@@ -234,6 +262,9 @@ class ChatService:
         if memory_context:
             rag_text = f"\n\n另外，以下是与当前问题相关的历史记忆：\n\n{memory_context}"
             prompt_content = prompt_content + rag_text if prompt_content else rag_text
+
+        # 打印最终使用的prompt（调试用）
+        logger.info(f"[PROMPT] Final used prompt:\n{prompt_content}")
 
         # 8. 启动后台任务
         # - 如果触发清洗，启动清洗任务

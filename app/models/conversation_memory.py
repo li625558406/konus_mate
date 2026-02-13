@@ -32,6 +32,9 @@ class ConversationMemory(Base):
     conversation_round = Column(Integer, nullable=False, comment="对话轮次（第50次、第100次等）")
     importance_score = Column(Integer, default=5, comment="重要性评分 1-10")
 
+    # 实体信息（JSON格式）
+    entities = Column(Text, nullable=True, comment="实体信息（JSON格式）：{dates: [], locations: [], people: [], events: []}")
+
     # 软删除
     is_deleted = Column(Boolean, default=False, comment="是否软删除")
     deleted_at = Column(DateTime, nullable=True, comment="删除时间")

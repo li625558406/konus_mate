@@ -22,7 +22,12 @@ class ConversationCleanerService:
     # 清洗提示词模板
     CLEANING_PROMPT = """你是一个专业的对话记忆分析师。请分析以下对话内容，提取出需要长期记忆的重要信息。
 
-对话背景：这是一个AI伴侣的对话记录。
+**特别关注时间和地点信息**：
+- 如果用户提到具体时间（如"今天"、"明天"、"昨天"、"上周"、"3月15号"、"这周末"等），请在 entities.dates 中记录，格式：YYYY-MM-DD（如"2026-02-13"）
+- 如果用户提到相对时间（如"过两天"、"上个月"、"上周三"等），请尽量推算具体日期并在 entities.dates 中记录
+- 如果用户提到具体地点（如"去了XX商场"、"在XX公园"、"到XX餐厅"等），请在 entities.locations 中记录
+- 如果用户提到人物（如"和小王"、"和李四"等），请在 entities.people 中记录
+- 如果用户提到事件（如"看了电影"、"参加比赛"等），请在 entities.events 中记录
 
 请分析以下对话内容，并按照以下格式返回JSON结果：
 
@@ -32,8 +37,14 @@ class ConversationCleanerService:
   "importance_score": 7,
   "should_remember": true,
   "memory_type": "active",
-  "reason": "为什么这段对话值得记住的原因"
-}}
+  "reason": "为什么这段对话值得记住的原因",
+  "entities": {
+    "dates": ["2026-02-13"],
+    "locations": ["人民广场"],
+    "people": ["小王"],
+    "events": ["下午茶"]
+  }
+}
 
 判断标准：
 1. **主动记忆（active）**：用户主动提到的个人信息、喜好、重要事件、情感状态等
@@ -136,7 +147,7 @@ class ConversationCleanerService:
                 logger.info(f"对话轮次 {conversation_round} 的内容不需要保存")
                 return []
 
-            # 3. 创建记忆记录（不保存原始对话内容，节省存储）
+            # 3. 创建记忆记录（不保存原始对话内容，节省存储空间）
             memory = ConversationMemory(
                 user_id=user_id,
                 system_instruction_id=system_instruction_id,
@@ -147,6 +158,10 @@ class ConversationCleanerService:
                 conversation_round=conversation_round,
                 importance_score=cleaning_result.get("importance_score", 5),
             )
+
+            # 如果有 entities 信息，保存为 JSON
+            if "entities" in cleaning_result:
+                memory.entities = json.dumps(cleaning_result["entities"], ensure_ascii=False)
 
             # 4. 生成向量嵌入（异步）
             summary_text = cleaning_result["summary"]
@@ -335,15 +350,13 @@ async def clean_conversation_in_background(
     异步后台任务：清洗对话并存储
     """
     try:
-        logger.info(f"[CLEANING] Starting background task: user_id={user_id}, round={conversation_round}, messages={len(messages)}")
         service = ConversationCleanerService(db)
-        memories = await service.clean_and_store_conversation(
+        await service.clean_and_store_conversation(
             user_id=user_id,
             system_instruction_id=system_instruction_id,
             messages=messages,
             conversation_round=conversation_round
         )
-        logger.info(f"[CLEANING] Completed: saved {len(memories)} memories")
     except Exception as e:
         logger.error(f"后台对话清洗任务失败: {str(e)}", exc_info=True)
 
