@@ -230,7 +230,8 @@ class ConversationCleanerService:
             删除的记录数
         """
         try:
-            cutoff_date = datetime.now(timezone.utc) - timedelta(days=30 * months)
+            from datetime import timedelta
+            cutoff_date = datetime.utcnow() - timedelta(days=30 * months)
 
             # 查找需要软删除的记录（创建时间最老的）
             result = await self.db.execute(
@@ -250,7 +251,7 @@ class ConversationCleanerService:
             count = 0
             for memory in memories_to_delete:
                 memory.is_deleted = True
-                memory.deleted_at = datetime.now(timezone.utc)
+                memory.deleted_at = datetime.utcnow()
                 count += 1
 
             await self.db.commit()

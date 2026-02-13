@@ -2,15 +2,10 @@
 对话记忆模型
 用于RAG向量存储的对话清洗数据
 """
-from datetime import datetime, timezone
+from datetime import datetime
 from sqlalchemy import Column, String, DateTime, Text, Integer, Boolean, ForeignKey, Index
 from sqlalchemy.orm import relationship
 from app.db.session import Base
-
-
-def get_utc_now():
-    """获取当前UTC时间"""
-    return datetime.now(timezone.utc)
 
 
 class ConversationMemory(Base):
@@ -42,8 +37,8 @@ class ConversationMemory(Base):
     deleted_at = Column(DateTime, nullable=True, comment="删除时间")
 
     # 审计字段
-    created_at = Column(DateTime, default=get_utc_now, comment="创建时间")
-    updated_at = Column(DateTime, default=get_utc_now, onupdate=get_utc_now, comment="更新时间")
+    created_at = Column(DateTime, default=datetime.utcnow, comment="创建时间")
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, comment="更新时间")
 
     # 复合索引优化查询
     __table_args__ = (
