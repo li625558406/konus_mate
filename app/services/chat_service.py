@@ -22,9 +22,10 @@ logger = logging.getLogger(__name__)
 
 
 # 常量配置
-CONVERSATION_BATCH_SIZE = 50  # 每50次对话触发清洗
-CONVERSATION_KEEP_SIZE = 10    # 超过50次后保留后10条
-
+# CONVERSATION_BATCH_SIZE = 50  # 每50次对话触发清洗
+# CONVERSATION_KEEP_SIZE = 10    # 超过50次后保留后10条
+CONVERSATION_BATCH_SIZE = 5  # 每50次对话触发清洗
+CONVERSATION_KEEP_SIZE = 2
 
 class ChatService:
     """聊天服务类 - 处理聊天业务逻辑（支持记忆管理）"""
