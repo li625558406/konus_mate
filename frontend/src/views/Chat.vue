@@ -21,40 +21,19 @@
         </div>
       </div>
 
-      <!-- Sessions List -->
+      <!-- Actions -->
       <div class="flex-1 overflow-y-auto p-4">
         <div class="flex items-center justify-between mb-4">
-          <h2 class="text-neutral-600 font-body font-semibold text-base">会话历史</h2>
+          <h2 class="text-neutral-600 font-body font-semibold text-base">对话</h2>
           <button
             @click="handleNewChat"
             class="p-2 rounded-lg bg-neutral-100 hover:bg-neutral-200 transition-colors text-primary-600"
-            title="新建会话"
+            title="清空对话"
           >
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
             </svg>
           </button>
-        </div>
-
-        <div v-if="chatStore.loading" class="flex items-center justify-center py-8">
-          <div class="spinner"></div>
-        </div>
-
-        <div v-else-if="chatStore.hasSessions" class="space-y-2">
-          <div
-            v-for="session in chatStore.sessions"
-            :key="session.id"
-            @click="handleSelectSession(session.id)"
-            class="p-3 rounded-xl cursor-pointer transition-all duration-300 hover:bg-neutral-50"
-            :class="{ 'bg-primary-50 border border-primary-200': chatStore.currentSession?.id === session.id }"
-          >
-            <p class="text-neutral-700 font-body text-sm truncate mb-1">{{ session.title }}</p>
-            <p class="text-neutral-400 text-xs">{{ formatDate(session.updated_at) }}</p>
-          </div>
-        </div>
-
-        <div v-else class="text-center py-8 text-neutral-400">
-          <p class="font-body">暂无会话记录</p>
         </div>
       </div>
 
@@ -74,7 +53,7 @@
       <!-- Chat Header -->
       <header class="flex-shrink-0 p-6 border-b border-neutral-200">
         <h2 class="text-xl font-display font-semibold text-neutral-800">
-          {{ chatStore.currentSession?.title || '新对话' }}
+          新对话
         </h2>
         <p class="text-neutral-400 text-sm font-body mt-1">
           {{ chatStore.messages.length }} 条消息
@@ -185,24 +164,6 @@ const chatStore = useChatStore()
 const messageInput = ref('')
 const messagesContainer = ref(null)
 
-// 格式化日期
-const formatDate = (dateString) => {
-  if (!dateString) return ''
-  const date = new Date(dateString)
-  const now = new Date()
-  const diffMs = now - date
-  const diffMins = Math.floor(diffMs / 60000)
-  const diffHours = Math.floor(diffMs / 3600000)
-  const diffDays = Math.floor(diffMs / 86400000)
-
-  if (diffMins < 1) return '刚刚'
-  if (diffMins < 60) return `${diffMins}分钟前`
-  if (diffHours < 24) return `${diffHours}小时前`
-  if (diffDays < 7) return `${diffDays}天前`
-
-  return date.toLocaleDateString('zh-CN')
-}
-
 // 滚动到底部
 const scrollToBottom = async () => {
   await nextTick()
@@ -226,19 +187,9 @@ const handleSend = async () => {
   }
 }
 
-// 新建会话
+// 新建对话
 const handleNewChat = () => {
-  chatStore.createNewSession()
-}
-
-// 选择会话
-const handleSelectSession = async (sessionId) => {
-  try {
-    await chatStore.loadMessages(sessionId)
-    await scrollToBottom()
-  } catch (error) {
-    console.error('Load session failed:', error)
-  }
+  chatStore.clearMessages()
 }
 
 // 退出登录
@@ -249,16 +200,7 @@ const handleLogout = () => {
   }
 }
 
-// 初始化加载会话列表
-onMounted(async () => {
-  try {
-    await chatStore.loadSessions()
-  } catch (error) {
-    console.error('Load sessions failed:', error)
-  }
-})
-
-// 监听消息变化，自动滚动到底部
+// 盚听消息变化，自动滚动到底部
 watch(() => chatStore.messages.length, () => {
   scrollToBottom()
 })

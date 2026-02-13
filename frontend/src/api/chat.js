@@ -1,36 +1,14 @@
 import api from './index'
 
 /**
- * 发送聊天消息
- * @param {Object} data - 聊天请求 { message, session_id?, system_instruction_id?, prompt_id?, temperature?, max_tokens? }
+ * 发送聊天消息（支持多轮对话上下文）
+ * @param {Object} data - 聊天请求
+ * @param {Array} data.messages - 对话上下文列表 [{role, content}, ...]
+ * @param {string} data.system_instruction - 系统提示词内容（可选）
+ * @param {number} data.system_instruction_id - 系统提示词ID（可选）
+ * @param {number} data.temperature - 温度参数（可选）
+ * @param {number} data.max_tokens - 最大token数（可选）
  */
 export const sendMessage = (data) => {
   return api.post('/chat', data)
-}
-
-/**
- * 获取会话列表
- * @param {string} userId - 用户ID
- * @param {number} limit - 限制数量
- */
-export const getSessions = (userId = 'default_user', limit = 50) => {
-  return api.get('/chat/sessions', {
-    params: { user_id: userId, limit }
-  })
-}
-
-/**
- * 获取会话详情
- * @param {string} sessionId - 会话ID
- */
-export const getSession = (sessionId) => {
-  return api.get(`/chat/sessions/${sessionId}`)
-}
-
-/**
- * 获取会话消息列表
- * @param {string} sessionId - 会话ID
- */
-export const getSessionMessages = (sessionId) => {
-  return api.get(`/chat/sessions/${sessionId}/messages`)
 }

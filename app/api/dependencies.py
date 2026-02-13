@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.services.chat_service import ChatService
 from app.services.system_instruction_service import SystemInstructionService
-from app.services.prompt_service import PromptService
 from app.services.auth_service import AuthService
 from app.core.security import verify_token
 
@@ -25,11 +24,6 @@ async def get_chat_service(db: AsyncSession = Depends(get_db)) -> ChatService:
 async def get_system_instruction_service(db: AsyncSession = Depends(get_db)) -> SystemInstructionService:
     """获取系统提示词服务实例"""
     return SystemInstructionService(db)
-
-
-async def get_prompt_service(db: AsyncSession = Depends(get_db)) -> PromptService:
-    """获取 Prompt 服务实例"""
-    return PromptService(db)
 
 
 async def get_auth_service(db: AsyncSession = Depends(get_db)) -> AuthService:

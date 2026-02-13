@@ -53,7 +53,7 @@ async def init_db() -> None:
     """
     async with engine.begin() as conn:
         # 导入所有模型以确保它们被注册
-        from app.models import chat, system_instruction, prompt  # noqa
+        from app.models import system_instruction  # noqa
 
         # 创建所有表
         await conn.run_sync(Base.metadata.create_all)
