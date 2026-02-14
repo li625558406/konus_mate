@@ -3,7 +3,8 @@
 用于请求验证和响应序列化
 """
 from typing import Optional, List, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+from pydantic import ValidationError
 
 
 class ChatMessageContext(BaseModel):
@@ -19,7 +20,8 @@ class ChatRequest(BaseModel):
     # 对话上下文列表（多轮对话历史）
     messages: List[ChatMessageContext] = Field(
         ...,
-        description="对话上下文列表，包含多轮对话历史"
+        description="对话上下文列表，包含多轮对话历史",
+        min_length=1  # 至少包含一条消息
     )
 
     # 可选的系统提示词和 prompt（用户可以直接传入，也可以通过 ID 指定）
@@ -32,6 +34,22 @@ class ChatRequest(BaseModel):
     temperature: Optional[float] = Field(None, ge=0, le=2, description="温度参数")
     max_tokens: Optional[int] = Field(None, ge=1, le=32000, description="最大token数")
     stream: bool = Field(False, description="是否使用流式响应")
+
+    @model_validator(mode='after')
+    def validate_messages(self):
+        """验证消息数组不为空且内容有效"""
+        if not self.messages:
+            raise ValueError("messages 数组不能为空")
+
+        # 验证每条消息的 content 不为空
+        for i, msg in enumerate(self.messages):
+            if not msg.content or not msg.content.strip():
+                raise ValueError(f"第 {i+1} 条消息的 content 不能为空")
+            # 验证 role 值合法
+            if msg.role not in ["user", "assistant", "system"]:
+                raise ValueError(f"第 {i+1} 条消息的 role 必须是 'user'、'assistant' 或 'system'")
+
+        return self
 
 
 class ChatResponse(BaseModel):

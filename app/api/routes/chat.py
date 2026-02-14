@@ -3,6 +3,7 @@
 """
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import ValidationError
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.services.chat_service import ChatService
 from app.api.dependencies import get_chat_service, get_current_user
@@ -35,7 +36,25 @@ async def chat(
     try:
         response = await chat_service.chat(request, user_id)
         return response
+    except ValidationError as e:
+        # Pydantic 验证错误
+        logger.warning(f"Request validation failed: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": "请求参数验证失败",
+                "details": e.errors()
+            }
+        )
+    except ValueError as e:
+        # 业务逻辑错误（如空消息）
+        logger.warning(f"Business logic error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
     except Exception as e:
+        # 其他未预期的错误
         logger.error(f"Chat request failed: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

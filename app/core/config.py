@@ -29,8 +29,8 @@ class Settings(BaseSettings):
     DB_PASSWORD: str = Field(default="LGligang", description="数据库密码")
 
     # 数据库连接池配置
-    DB_POOL_SIZE: int = Field(default=10, description="连接池大小")
-    DB_MAX_OVERFLOW: int = Field(default=20, description="连接池最大溢出")
+    DB_POOL_SIZE: int = Field(default=20, description="连接池大小")
+    DB_MAX_OVERFLOW: int = Field(default=30, description="连接池最大溢出")
     DB_POOL_TIMEOUT: int = Field(default=30, description="连接池超时时间")
     DB_POOL_RECYCLE: int = Field(default=3600, description="连接回收时间（秒）")
 
