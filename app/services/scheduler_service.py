@@ -8,7 +8,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from datetime import datetime
 from app.db.session import AsyncSessionLocal
-from scripts.daily_memory_cleanup import daily_memory_cleanup
+from app.services.cleanup_service import daily_memory_cleanup_in_background
 
 logger = logging.getLogger(__name__)
 
@@ -48,8 +48,8 @@ class SchedulerService:
 
             # 创建新的数据库会话
             async with AsyncSessionLocal() as db:
-                # 执行清理（使用同步版本）
-                daily_memory_cleanup()
+                # 执行异步清理
+                await daily_memory_cleanup_in_background(db)
 
             logger.info("每日记忆垃圾回收完成")
         except Exception as e:

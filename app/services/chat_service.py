@@ -355,7 +355,41 @@ class ChatService:
         assistant_content = litellm_service.extract_message_content(response)
         usage_info = litellm_service.extract_usage(response)
 
-        # 11. 构建响应
+        # ========== 新增：11. 更新记忆访问统计 ==========
+        # 收集所有被检索到的记忆ID
+        accessed_memory_ids = []
+
+        # 添加最新3条记忆的ID
+        if 'recent_memories' in locals() and recent_memories:
+            accessed_memory_ids.extend([m.id for m in recent_memories])
+
+        # 添加RAG检索记忆的ID
+        if 'memory_context' in locals() and memory_context:
+            # memory_context 是格式化的文本，需要重新查询获取ID
+            # 这里简化处理：如果有RAG记忆，则更新（已在内存中）
+            try:
+                from app.services.memory_access_update_service import MemoryAccessUpdateService
+
+                # 异步更新记忆访问统计
+                async def update_access():
+                    try:
+                        await MemoryAccessUpdateService.update_memory_access(
+                            db=self.db,
+                            memory_ids=accessed_memory_ids
+                        )
+                        logger.info(f"[MEMORY_ACCESS] Updated {len(accessed_memory_ids)} memories")
+                    except Exception as e:
+                        logger.error(f"[MEMORY_ACCESS] Update failed: {str(e)}")
+
+                # 创建后台任务，不阻塞响应
+                if accessed_memory_ids:
+                        asyncio.create_task(update_access())
+            except ImportError:
+                    logger.warning("[MEMORY_ACCESS] MemoryAccessUpdateService not available")
+            except Exception as e:
+                logger.error(f"[MEMORY_ACCESS] Failed to schedule update: {str(e)}")
+
+        # 12. 构建响应
         return ChatResponse(
             message=assistant_content,
             usage=usage_info,

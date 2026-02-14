@@ -22,8 +22,10 @@ class Settings(BaseSettings):
 
     # ========== 数据库配置 ==========
     # PostgreSQL 数据库连接信息
-    DB_HOST: str = Field(default="89.208.242.21", description="数据库主机")
-    DB_PORT: int = Field(default=15432, description="数据库端口")
+    # DB_HOST: str = Field(default="89.208.242.21", description="数据库主机")
+    # DB_PORT: int = Field(default=15432, description="数据库端口")
+    DB_HOST: str = Field(default="192.168.2.7", description="数据库主机")
+    DB_PORT: int = Field(default=5432, description="数据库端口")
     DB_NAME: str = Field(default="mate_db", description="数据库名称")
     DB_USER: str = Field(default="konus", description="数据库用户")
     DB_PASSWORD: str = Field(default="LGligang", description="数据库密码")
