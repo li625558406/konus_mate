@@ -17,6 +17,7 @@ from app.services.conversation_cleaner_service import (
     ConversationCleanerService,
     clean_conversation_in_background
 )
+from app.services.emotion_engine_service import EmotionEngineService
 
 logger = logging.getLogger(__name__)
 
@@ -315,6 +316,28 @@ class ChatService:
             rag_text = f"\n\n另外，以下是与当前问题相关的历史记忆：\n\n{memory_context}"
             prompt_content = prompt_content + rag_text if prompt_content else rag_text
 
+        # 9.4 获取当前情绪状态并追加到 prompt（新增）
+        emotion_state_text = None
+        try:
+            emotion_engine = EmotionEngineService(self.db)
+            emotion_state = await emotion_engine.get_emotion_state(
+                user_id=user_id,
+                char_id=system_instruction_id
+            )
+
+            if emotion_state:
+                emotion_state_text = (
+                    f"\n\n【当前情绪状态】\n"
+                    f"- 效价 (Valence): {emotion_state['valence']:.2f} ({'正面' if emotion_state['valence'] > 0 else '负面' if emotion_state['valence'] < 0 else '中性'})\n"
+                    f"- 唤醒度 (Arousal): {emotion_state['arousal']:.2f} ({'激动' if emotion_state['arousal'] > 0 else '平静' if emotion_state['arousal'] < 0 else '中性'})\n"
+                    f"- 情绪标签: {emotion_state['label']}\n"
+                    f"请在回复时适当体现当前的情绪状态，让对话更加生动自然。"
+                )
+                prompt_content = prompt_content + emotion_state_text if prompt_content else emotion_state_text
+                logger.info(f"[EMOTION] Current emotion state: V={emotion_state['valence']:.2f}, A={emotion_state['arousal']:.2f}, label={emotion_state['label']}")
+        except Exception as e:
+            logger.warning(f"[EMOTION] Failed to get emotion state: {str(e)}")
+
         # 打印最终使用的prompt（调试用）
         logger.info(f"[PROMPT] Final used prompt:\n{prompt_content}")
 
@@ -341,6 +364,26 @@ class ChatService:
 
         task = asyncio.create_task(background_cleaning())
         logger.info(f"[BACKGROUND] 后台任务已创建: task_id={id(task)}")
+
+        # 9.5 启动后台情绪状态更新任务（新增）
+        async def background_emotion_update():
+            try:
+                from app.db.session import AsyncSessionLocal
+                async with AsyncSessionLocal() as bg_db:
+                    emotion_engine = EmotionEngineService(bg_db)
+                    result = await emotion_engine.process_conversation(
+                        messages=[{"role": m.role, "content": m.content} for m in request.messages],
+                        user_id=user_id,
+                        system_instruction_id=system_instruction_id
+                    )
+                    logger.info(f"[EMOTION_UPDATE] Emotion state updated: user_id={user_id}, "
+                               f"char_id={system_instruction_id}, new_state={result['current_state']}")
+            except Exception as e:
+                logger.error(f"[EMOTION_UPDATE] Failed to update emotion state: {str(e)}", exc_info=True)
+
+        # 创建情绪更新后台任务，不阻塞响应
+        asyncio.create_task(background_emotion_update())
+        logger.info(f"[EMOTION_UPDATE] Emotion update task created")
 
         # 10. 调用 LLM（prompt参数包含RAG检索的记忆）
         response = await litellm_service.chat_completion(

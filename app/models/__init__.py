@@ -6,10 +6,12 @@ from app.models.system_instruction import SystemInstruction
 from app.models.user import User
 from app.models.conversation_memory import ConversationMemory
 from app.models.user_custom_prompt import UserCustomPrompt
+from app.models.character_emotion_state import CharacterEmotionState
 
 __all__ = [
     "SystemInstruction",
     "User",
     "ConversationMemory",
     "UserCustomPrompt",
+    "CharacterEmotionState",
 ]

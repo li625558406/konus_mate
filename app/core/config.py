@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     # 智谱 AI API 配置
     ZHIPU_API_KEY: str = Field(default="", description="智谱 AI API Key")
 
+    # DeepSeek API 配置
+    DEEPSEEK_API_KEY: str = Field(default="", description="DeepSeek API Key")
+
     # LiteLLM 配置
     LITELLM_MODEL: str = Field(default="zhipuai/glm-4", description="LiteLLM 模型名称")
     LITELLM_TEMPERATURE: float = Field(default=0.7, description="LLM 温度参数")
